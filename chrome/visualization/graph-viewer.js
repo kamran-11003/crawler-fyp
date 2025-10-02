@@ -26,9 +26,18 @@ class GraphVisualizer {
     }
 
     init() {
-        this.createTooltip();
-        this.setupEventListeners();
-        this.loadGraphFromStorage();
+        // Defer DOM-dependent setup until DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => {
+                this.createTooltip();
+                this.setupEventListeners();
+                this.loadGraphFromStorage();
+            });
+        } else {
+            this.createTooltip();
+            this.setupEventListeners();
+            this.loadGraphFromStorage();
+        }
     }
 
     createTooltip() {
@@ -113,15 +122,33 @@ class GraphVisualizer {
 
     async loadGraphFromStorage() {
         try {
+            // Prefer chrome.storage.local
+            if (chrome?.storage?.local) {
+                const { graph } = await chrome.storage.local.get(['graph']);
+                if (graph && graph.nodes) {
+                    this.graph = graph;
+                    // Mirror to localStorage for export fallback
+                    try { localStorage.setItem('ui-crawler-graph', JSON.stringify(graph)); } catch(_) {}
+                    this.renderGraph();
+                    this.updateStats();
+                    this.updateStatus('Graph loaded');
+                    return;
+                }
+            }
+
+            // Fallback to localStorage
             const storedGraph = localStorage.getItem('ui-crawler-graph');
             if (storedGraph) {
                 this.graph = JSON.parse(storedGraph);
                 this.renderGraph();
                 this.updateStats();
-                this.updateStatus('Graph loaded from storage');
+                this.updateStatus('Graph loaded');
+            } else {
+                this.updateStatus('No graph data found');
             }
         } catch (error) {
             console.error('Error loading graph from storage:', error);
+            this.updateStatus('Error loading graph');
         }
     }
 
@@ -136,8 +163,9 @@ class GraphVisualizer {
         const container = d3.select('#graph-container');
         container.selectAll('*').remove();
 
-        const width = container.node().clientWidth;
-        const height = container.node().clientHeight;
+        const containerNode = container.node();
+        const width = (containerNode && containerNode.clientWidth) ? containerNode.clientWidth : 900;
+        const height = (containerNode && containerNode.clientHeight) ? containerNode.clientHeight : 600;
 
         // Create SVG
         this.svg = container
@@ -166,7 +194,13 @@ class GraphVisualizer {
             filtered: false
         }));
 
-        this.links = this.graph.edges || [];
+        // Normalize links to D3 expected {source, target}
+        const rawEdges = Array.isArray(this.graph.edges) ? this.graph.edges : [];
+        this.links = rawEdges.map(e => ({
+            ...e,
+            source: e.source !== undefined ? e.source : e.from,
+            target: e.target !== undefined ? e.target : e.to
+        }));
 
         // Apply current filter
         this.applyCurrentFilter();

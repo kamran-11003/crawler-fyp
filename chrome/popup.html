@@ -295,11 +295,11 @@
 			<p>Advanced UI crawling with screenshot capture and graph visualization</p>
 		</div>
 
-		<div class="tabs">
-			<div class="tab active" onclick="switchTab('crawl')">Crawl</div>
-			<div class="tab" onclick="switchTab('visualize')">Visualize</div>
-			<div class="tab" onclick="switchTab('settings')">Settings</div>
-		</div>
+            <div class="tabs">
+            <div class="tab active" data-tab="crawl">Crawl</div>
+            <div class="tab" data-tab="visualize">Visualize</div>
+            <div class="tab" data-tab="settings">Settings</div>
+        </div>
 
 		<!-- Crawl Tab -->
 		<div id="crawl-tab" class="tab-content active">
@@ -311,7 +311,7 @@
 
 			<div class="section">
 				<h4>⚙️ Crawl Settings</h4>
-				<div class="row">
+	<div class="row">
 					<input id="maxPages" class="input" type="number" min="1" max="50" value="10" placeholder="Max pages" />
 					<input id="maxDepth" class="input" type="number" min="1" max="10" value="3" placeholder="Max depth" />
 				</div>

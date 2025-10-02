@@ -226,26 +226,50 @@
 	}
 
 	function getElementSelector(element) {
+		// Prefer id if present
 		if (element.id) {
-			return `#${element.id}`;
-		}
-		
-		if (element.className) {
-			const classes = element.className.split(' ').filter(c => c.trim());
-			if (classes.length > 0) {
-				return `.${classes.join('.')}`;
+			try {
+				return `#${CSS && CSS.escape ? CSS.escape(element.id) : element.id}`;
+			} catch (e) {
+				return `#${element.id}`;
 			}
 		}
-		
-		const dataAttrs = Array.from(element.attributes)
-			.filter(attr => attr.name.startsWith('data-'))
-			.map(attr => `[${attr.name}="${attr.value}"]`);
-		
-		if (dataAttrs.length > 0) {
-			return `${element.tagName.toLowerCase()}${dataAttrs.join('')}`;
+
+		// Safely derive selector from classes
+		let classNames = [];
+		try {
+			if (element.classList && element.classList.length) {
+				classNames = Array.from(element.classList);
+			} else if (typeof element.className === 'string' && element.className.trim()) {
+				classNames = element.className.split(/\s+/).filter(Boolean);
+			} else if (element.className && typeof element.className.baseVal === 'string') { // SVGAnimatedString
+				classNames = element.className.baseVal.split(/\s+/).filter(Boolean);
+			}
+		} catch (_) {
+			// ignore
 		}
-		
-		return element.tagName.toLowerCase();
+		if (classNames.length > 0) {
+			try {
+				return `.${classNames.map(c => (CSS && CSS.escape ? CSS.escape(c) : c)).join('.')}`;
+			} catch (e) {
+				return `.${classNames.join('.')}`;
+			}
+		}
+
+		// Fallback to data-attributes
+		const dataAttrs = Array.from(element.attributes || [])
+			.filter(attr => attr && typeof attr.name === 'string' && attr.name.startsWith('data-'))
+			.map(attr => {
+				const name = attr.name;
+				const val = (attr.value ?? '').toString();
+				return `[${name}="${val.replace(/"/g, '\\"')}"]`;
+			});
+		if (dataAttrs.length > 0) {
+			return `${(element.tagName || '').toLowerCase()}${dataAttrs.join('')}`;
+		}
+
+		// Final fallback to tag name
+		return (element.tagName || 'div').toLowerCase();
 	}
 
 	// Create state vector for functional equivalence

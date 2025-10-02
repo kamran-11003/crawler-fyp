@@ -563,7 +563,18 @@ export class ErrorHandler {
         }
         
         if (element.className) {
-            return `.${element.className.split(' ').join('.')}`;
+            try {
+                if (element.classList && element.classList.length) {
+                    return `.${Array.from(element.classList).join('.')}`;
+                }
+                if (typeof element.className === 'string') {
+                    return `.${element.className.split(/\s+/).filter(Boolean).join('.')}`;
+                }
+                if (element.className && typeof element.className.baseVal === 'string') {
+                    return `.${element.className.baseVal.split(/\s+/).filter(Boolean).join('.')}`;
+                }
+            } catch (_) {}
+            return element.tagName ? element.tagName.toLowerCase() : 'div';
         }
         
         return element.tagName.toLowerCase();

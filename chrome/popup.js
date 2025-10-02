@@ -40,10 +40,11 @@ class UICrawlerPopup {
 	}
 
 	setupEventListeners() {
-		// Tab switching
+		// Tab switching (no inline handlers)
 		document.querySelectorAll('.tab').forEach(tab => {
 			tab.addEventListener('click', (e) => {
-				const tabName = e.target.textContent.toLowerCase();
+				const tabName = e.currentTarget.getAttribute('data-tab');
+				if (!tabName) return;
 				this.switchTab(tabName);
 			});
 		});
@@ -99,42 +100,90 @@ class UICrawlerPopup {
 	}
 
 	async hash(text) {
-		const enc = new TextEncoder().encode(text);
-		const buf = await crypto.subtle.digest('SHA-1', enc);
-		const bytes = Array.from(new Uint8Array(buf));
-		return bytes.map(b => b.toString(16).padStart(2, '0')).join('');
-	}
+	const enc = new TextEncoder().encode(text);
+	const buf = await crypto.subtle.digest('SHA-1', enc);
+	const bytes = Array.from(new Uint8Array(buf));
+	return bytes.map(b => b.toString(16).padStart(2, '0')).join('');
+}
 
 	async captureStateWithScreenshots(tabId) {
+		// Guard restricted schemes
+		try {
+			const tab = await chrome.tabs.get(tabId);
+			if (!tab?.url || /^(chrome|edge|about|chrome-extension):/i.test(tab.url)) {
+				return null;
+			}
+			// If file:// and access not enabled, bail gracefully
+			if (tab.url.startsWith('file://')) {
+				// Content scripts require user toggle; return null to show guidance
+			}
+		} catch (_) {}
+
+		// Ensure the page is fully loaded
+		await new Promise((resolve) => {
+			let attempts = 0;
+			const check = async () => {
+				try {
+					const t = await chrome.tabs.get(tabId);
+					if (t.status === 'complete') return resolve();
+				} catch (_) {}
+				if (attempts++ > 50) return resolve();
+				setTimeout(check, 100);
+			};
+			check();
+		});
+
 		// Try enhanced content collector first
-		let [{ result }] = await chrome.scripting.executeScript({
+		let exec = await chrome.scripting.executeScript({
 			target: { tabId },
 			func: () => (typeof window.__UICRAWLER_COLLECT_ENHANCED__ === 'function' ? window.__UICRAWLER_COLLECT_ENHANCED__() : null)
 		});
+		let result = exec && exec[0] ? exec[0].result : null;
 
 		// Fallback to basic collector
 		if (!result) {
-			[{ result }] = await chrome.scripting.executeScript({
-				target: { tabId },
-				func: () => (typeof window.__UICRAWLER_COLLECT__ === 'function' ? window.__UICRAWLER_COLLECT__() : null)
-			});
+			exec = await chrome.scripting.executeScript({
+		target: { tabId },
+		func: () => (typeof window.__UICRAWLER_COLLECT__ === 'function' ? window.__UICRAWLER_COLLECT__() : null)
+	});
+			result = exec && exec[0] ? exec[0].result : null;
 		}
 
-		if (!result) return null;
+		// If still no collector, inject content.js then retry once
+	if (!result) {
+			try {
+				await chrome.scripting.executeScript({ target: { tabId }, files: ['content.js'] });
+				// retry enhanced
+				exec = await chrome.scripting.executeScript({
+			target: { tabId },
+					func: () => (typeof window.__UICRAWLER_COLLECT_ENHANCED__ === 'function' ? window.__UICRAWLER_COLLECT_ENHANCED__() : null)
+				});
+				result = exec && exec[0] ? exec[0].result : null;
+				if (!result) {
+					exec = await chrome.scripting.executeScript({
+						target: { tabId },
+						func: () => (typeof window.__UICRAWLER_COLLECT__ === 'function' ? window.__UICRAWLER_COLLECT__() : null)
+					});
+					result = exec && exec[0] ? exec[0].result : null;
+				}
+			} catch (_) {}
+		}
+
+	if (!result) return null;
 
 		const domHash = await this.hash(result.dom || '');
 		const node = {
 			id: (await this.hash(result.url + domHash)).slice(0, 12),
-			url: result.url,
-			title: result.title || '',
-			timestamp: result.timestamp || Date.now(),
-			dom_hash: domHash,
-			elements: Array.isArray(result.elements) ? result.elements : [],
+		url: result.url,
+		title: result.title || '',
+		timestamp: result.timestamp || Date.now(),
+		dom_hash: domHash,
+		elements: Array.isArray(result.elements) ? result.elements : [],
 			state_vector: result.stateVector || {
-				visible_elements: result.elements.filter(e => e.visible).length,
-				inputs: result.elements.filter(e => e.nodeType === 'input').length,
-				links: result.elements.filter(e => e.nodeType === 'a').length,
-				buttons: result.elements.filter(e => e.nodeType === 'button').length
+			visible_elements: result.elements.filter(e => e.visible).length,
+			inputs: result.elements.filter(e => e.nodeType === 'input').length,
+			links: result.elements.filter(e => e.nodeType === 'a').length,
+			buttons: result.elements.filter(e => e.nodeType === 'button').length
 			},
 			metadata: result.metadata || {}
 		};
@@ -142,7 +191,8 @@ class UICrawlerPopup {
 		// Capture screenshots if enabled
 		if (this.settings.captureScreenshots) {
 			try {
-				const screenshot = await chrome.tabs.captureVisibleTab(undefined, { 
+				// Guard: only capture if permission and tab window available
+				const screenshot = await chrome.tabs.captureVisibleTab(this.currentTab?.windowId, { 
 					format: 'png',
 					quality: 90
 				});
@@ -174,6 +224,7 @@ class UICrawlerPopup {
 				}
 			} catch (error) {
 				console.warn('Screenshot capture failed:', error);
+				// Do not fail the whole node on capture failure
 			}
 		}
 
@@ -208,9 +259,9 @@ class UICrawlerPopup {
 		
 		try {
 			const node = await this.captureStateWithScreenshots(this.currentTab.id);
-			if (!node) {
-				throw new Error('No data captured. If using file:// pages, enable "Allow access to file URLs" for this extension and reload the page, then try again.');
-			}
+	if (!node) {
+		throw new Error('No data captured. If using file:// pages, enable "Allow access to file URLs" for this extension and reload the page, then try again.');
+	}
 
 			const { graph = { nodes: [], edges: [] } } = await chrome.storage.local.get(['graph']);
 			if (!graph.nodes.find(n => n.id === node.id)) {
@@ -249,7 +300,7 @@ class UICrawlerPopup {
 			const startOrigin = new URL(this.currentTab.url).origin;
 			const visited = new Set();
 			const queue = [{ url: this.currentTab.url, depth: 0 }];
-			const { graph = { nodes: [], edges: [] } } = await chrome.storage.local.get(['graph']);
+	const { graph = { nodes: [], edges: [] } } = await chrome.storage.local.get(['graph']);
 
 			let processed = 0;
 			const total = Math.min(maxPages, queue.length);
@@ -273,7 +324,7 @@ class UICrawlerPopup {
 				if (!node) continue;
 
 				const prevNode = graph.nodes.find(n => n.url === current.parentUrl);
-				if (!graph.nodes.find(n => n.id === node.id)) graph.nodes.push(node);
+	if (!graph.nodes.find(n => n.id === node.id)) graph.nodes.push(node);
 				
 				if (current.parent && prevNode) {
 					graph.edges.push({
@@ -286,7 +337,7 @@ class UICrawlerPopup {
 					});
 				}
 
-				await chrome.storage.local.set({ graph });
+	await chrome.storage.local.set({ graph });
 
 				// Get links for next level
 				if (current.depth + 1 <= maxDepth) {
@@ -337,19 +388,19 @@ class UICrawlerPopup {
 	}
 
 	async downloadGraph() {
-		const { graph = { nodes: [], edges: [] } } = await chrome.storage.local.get(['graph']);
-		return new Promise((resolve) => {
-			chrome.runtime.sendMessage({ type: 'downloadGraph', payload: graph }, (res) => {
-				const err = chrome.runtime.lastError;
-				if (err) {
-					console.error('[popup] download error', err.message);
-					resolve({ ok: false, error: err.message });
-					return;
-				}
-				resolve(res || { ok: true });
-			});
+	const { graph = { nodes: [], edges: [] } } = await chrome.storage.local.get(['graph']);
+	return new Promise((resolve) => {
+		chrome.runtime.sendMessage({ type: 'downloadGraph', payload: graph }, (res) => {
+			const err = chrome.runtime.lastError;
+			if (err) {
+				console.error('[popup] download error', err.message);
+				resolve({ ok: false, error: err.message });
+				return;
+			}
+			resolve(res || { ok: true });
 		});
-	}
+	});
+}
 
 	async downloadScreenshots() {
 		const { graph = { nodes: [], edges: [] } } = await chrome.storage.local.get(['graph']);
@@ -410,8 +461,8 @@ class UICrawlerPopup {
 
 	async updateStats() {
 		try {
-			const { graph = { nodes: [], edges: [] } } = await chrome.storage.local.get(['graph']);
-			
+	const { graph = { nodes: [], edges: [] } } = await chrome.storage.local.get(['graph']);
+
 			const stats = {
 				totalNodes: graph.nodes.length,
 				totalEdges: graph.edges ? graph.edges.length : 0,

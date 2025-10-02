@@ -487,13 +487,20 @@ export function getElementSelector(element) {
     return `#${element.id}`;
   }
   
-  // Try class combinations
-  if (element.className) {
-    const classes = element.className.split(' ').filter(c => c.trim());
+  // Try class combinations (robust to SVGAnimatedString)
+  try {
+    let classes = [];
+    if (element.classList && element.classList.length) {
+      classes = Array.from(element.classList);
+    } else if (typeof element.className === 'string' && element.className.trim()) {
+      classes = element.className.split(/\s+/).filter(Boolean);
+    } else if (element.className && typeof element.className.baseVal === 'string') {
+      classes = element.className.baseVal.split(/\s+/).filter(Boolean);
+    }
     if (classes.length > 0) {
       return `.${classes.join('.')}`;
     }
-  }
+  } catch (_) {}
   
   // Try data attributes
   const dataAttrs = Array.from(element.attributes)
