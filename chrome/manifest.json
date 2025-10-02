@@ -1,0 +1,54 @@
+{
+  "manifest_version": 3,
+  "name": "UI Crawler (Graph Extractor)",
+  "version": "0.2.0",
+  "description": "Comprehensive UI crawler with screenshot capture, graph visualization, and advanced element detection.",
+  "action": {
+    "default_title": "UI Crawler",
+    "default_popup": "popup.html",
+    "default_icon": "icons/icon16.png"
+  },
+  "icons": {
+    "16": "icons/icon16.png"
+  },
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "downloads",
+    "storage",
+    "tabs",
+    "desktopCapture",
+    "clipboardWrite",
+    "unlimitedStorage"
+  ],
+  "host_permissions": [
+    "http://*/*",
+    "https://*/*",
+    "file://*/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://*/*",
+        "https://*/*",
+        "file://*/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["visualization/*", "modules/*", "utils/*"],
+      "matches": ["<all_urls>"]
+    }
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'unsafe-inline'; object-src 'self';"
+  }
+}
+
+

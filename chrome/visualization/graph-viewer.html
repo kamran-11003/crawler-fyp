@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UI Crawler - Graph Visualizer</title>
+    <script src="d3.v7.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            margin-top: 20px;
+            margin-bottom: 20px;
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            font-weight: 600;
+            margin: 0;
+        }
+
+        .header-controls {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+
+        .btn-primary {
+            background: rgba(255,255,255,0.2);
+            color: white;
+            border: 2px solid rgba(255,255,255,0.3);
+        }
+
+        .btn-primary:hover {
+            background: rgba(255,255,255,0.3);
+            border-color: rgba(255,255,255,0.5);
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #218838;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #c82333;
+        }
+
+        .stats-panel {
+            background: #f8f9fa;
+            border-bottom: 1px solid #dee2e6;
+            padding: 20px 30px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+        }
+
+        .stat-card {
+            background: white;
+            border-radius: 8px;
+            padding: 15px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+
+        .stat-card h3 {
+            font-size: 24px;
+            font-weight: 700;
+            color: #667eea;
+            margin-bottom: 5px;
+        }
+
+        .stat-card p {
+            color: #6c757d;
+            font-size: 14px;
+            margin: 0;
+        }
+
+        .controls {
+            padding: 20px 30px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #dee2e6;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .control-group {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .control-group label {
+            font-weight: 500;
+            color: #495057;
+            font-size: 14px;
+        }
+
+        .control-group input, .control-group select {
+            padding: 8px 12px;
+            border: 1px solid #ced4da;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+
+        .graph-container {
+            width: 100%;
+            height: 600px;
+            background: #fafafa;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .graph-container svg {
+            width: 100%;
+            height: 100%;
+        }
+
+        .node-info {
+            position: absolute;
+            background: white;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            padding: 15px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.15);
+            max-width: 350px;
+            z-index: 1000;
+            font-size: 14px;
+        }
+
+        .node-info h4 {
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+
+        .node-info p {
+            margin: 5px 0;
+            color: #495057;
+        }
+
+        .node-info .url {
+            word-break: break-all;
+            font-family: monospace;
+            background: #f8f9fa;
+            padding: 5px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+
+        .screenshot-viewer {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            z-index: 2000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .screenshot-content {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            max-width: 90vw;
+            max-height: 90vh;
+            overflow: auto;
+            position: relative;
+        }
+
+        .screenshot-content img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 8px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+
+        .close-btn {
+            position: absolute;
+            top: 15px;
+            right: 20px;
+            background: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            cursor: pointer;
+            font-size: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+        }
+
+        .close-btn:hover {
+            background: #c82333;
+            transform: scale(1.1);
+        }
+
+        .loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 200px;
+            font-size: 18px;
+            color: #6c757d;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin-right: 15px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .legend {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: white;
+            border-radius: 8px;
+            padding: 15px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            font-size: 12px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .legend-color {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+
+        .tooltip {
+            position: absolute;
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            pointer-events: none;
+            z-index: 1000;
+        }
+
+        .status-bar {
+            background: #e9ecef;
+            padding: 10px 30px;
+            border-top: 1px solid #dee2e6;
+            font-size: 14px;
+            color: #495057;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .progress-bar {
+            width: 200px;
+            height: 8px;
+            background: #e9ecef;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            transition: width 0.3s ease;
+        }
+
+        @media (max-width: 768px) {
+            .header {
+                flex-direction: column;
+                text-align: center;
+            }
+
+            .stats-grid {
+                grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            }
+
+            .controls {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .control-group {
+                justify-content: space-between;
+            }
+
+            .graph-container {
+                height: 400px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔍 UI Crawler - Graph Visualizer</h1>
+            <div class="header-controls">
+                <button class="btn btn-primary" id="load-graph-btn">
+                    📁 Load Graph
+                </button>
+                <button class="btn btn-primary" id="export-graph-btn">
+                    💾 Export Graph
+                </button>
+                <button class="btn btn-secondary" id="reset-graph-btn">
+                    🔄 Reset
+                </button>
+            </div>
+        </div>
+        
+        <div class="stats-panel">
+            <h3 style="margin-bottom: 15px; color: #495057;">📊 Graph Statistics</h3>
+            <div class="stats-grid" id="stats-content">
+                <div class="stat-card">
+                    <h3 id="total-nodes">-</h3>
+                    <p>Total Pages</p>
+                </div>
+                <div class="stat-card">
+                    <h3 id="total-edges">-</h3>
+                    <p>Total Connections</p>
+                </div>
+                <div class="stat-card">
+                    <h3 id="stats-pages">-</h3>
+                    <p>Stats Pages</p>
+                </div>
+                <div class="stat-card">
+                    <h3 id="screenshots">-</h3>
+                    <p>With Screenshots</p>
+                </div>
+                <div class="stat-card">
+                    <h3 id="interactive-elements">-</h3>
+                    <p>Interactive Elements</p>
+                </div>
+                <div class="stat-card">
+                    <h3 id="coverage">-</h3>
+                    <p>Coverage %</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="controls">
+            <div class="control-group">
+                <button class="btn btn-primary" id="reset-view-btn">
+                    🎯 Reset View
+                </button>
+                <button class="btn btn-secondary" id="toggle-layout-btn">
+                    🔄 Toggle Layout
+                </button>
+                <button class="btn btn-success" id="highlight-stats-btn">
+                    📈 Highlight Stats
+                </button>
+            </div>
+            
+            <div class="control-group">
+                <label for="node-size">Node Size:</label>
+                <input type="range" id="node-size" min="5" max="30" value="12">
+            </div>
+            
+            <div class="control-group">
+                <label for="link-distance">Link Distance:</label>
+                <input type="range" id="link-distance" min="50" max="300" value="100">
+            </div>
+            
+            <div class="control-group">
+                <label for="charge-strength">Charge Strength:</label>
+                <input type="range" id="charge-strength" min="-1000" max="-50" value="-300">
+            </div>
+            
+            <div class="control-group">
+                <label for="filter-type">Filter:</label>
+                <select id="filter-type">
+                    <option value="all">All Pages</option>
+                    <option value="stats">Stats Pages Only</option>
+                    <option value="screenshots">With Screenshots</option>
+                    <option value="interactive">Interactive Pages</option>
+                </select>
+            </div>
+        </div>
+        
+        <div class="graph-container" id="graph-container">
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                Loading graph...
+            </div>
+        </div>
+        
+        <div class="status-bar">
+            <div>
+                <span id="status">Ready to load graph</span>
+            </span>
+        </div>
+    </div>
+    
+    <!-- Screenshot Viewer Modal -->
+    <div id="screenshot-viewer" class="screenshot-viewer">
+        <div class="screenshot-content">
+            <button class="close-btn" id="close-screenshot-btn">&times;</button>
+            <div id="screenshot-content"></div>
+        </div>
+    </div>
+    
+    <!-- Legend -->
+    <div class="legend" id="legend" style="display: none;">
+        <h4 style="margin-bottom: 10px; color: #495057;">Legend</h4>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #ff6b6b;"></div>
+            <span>Stats Pages</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #4ecdc4;"></div>
+            <span>With Screenshots</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #74a9cf;"></div>
+            <span>Regular Pages</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #95a5a6;"></div>
+            <span>Filtered Out</span>
+        </div>
+    </div>
+    
+    <script src="graph-viewer.js"></script>
+</body>
+</html>
